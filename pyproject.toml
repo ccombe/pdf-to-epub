@@ -1,0 +1,60 @@
+[project]
+name = "pdf2epub"
+version = "0.1.0"
+description = "Batch-convert PDFs into reflowable EPUB 3 books"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pypdf>=7.1",
+    "pypdfium2>=5.15",
+    "pillow>=13",
+]
+
+[project.optional-dependencies]
+ocr = ["paddleocr>=3.7"]
+docling = ["docling>=2.150"]
+
+[project.scripts]
+pdf2epub = "pdf2epub.cli:main"
+
+[dependency-groups]
+dev = [
+    "fpdf2>=2.9",
+    "pytest>=9.2",
+    "ruff>=0.17",
+    "ty>=0.0.104",
+]
+
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+# The formatter owns line length. It does not wrap long string literals.
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["pdf2epub"]
+
+[tool.ty.environment]
+python-version = "3.12"
+
+# Docling, PaddleOCR, and NumPy are optional extras. They are imported
+# inside the recognizer and are not installed for the default check.
+[[tool.ty.overrides]]
+include = ["src/pdf2epub/recognize.py"]
+
+[tool.ty.overrides.rules]
+import-not-found = "ignore"
