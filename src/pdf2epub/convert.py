@@ -3,6 +3,7 @@
 import json
 import tempfile
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
 
 import pypdfium2 as pdfium
@@ -133,12 +134,18 @@ def _blocks(
     trusted_lines = []
     figure_blocks: list[Block] = []
     needs_ocr: list[PageInfo] = []
+    # A digital book uses a full-page image as a plate. A book of scans does not.
+    plates = _plates_are_illustrations(document)
     for page in document.pages:
+        if plates and page.full_page_image and page.page_class != "spread":
+            continue
         if _trust_text(page):
             trusted_lines.extend(page.lines)
             figure_blocks.extend(page.figures)
         else:
             needs_ocr.append(page)
+    if plates:
+        figure_blocks.extend(_plate_images(document, password))
     ordered = join_hyphens(reading_order(drop_furniture(trusted_lines)))
     use_font_headings = not any(entry.level == 1 for entry in document.outline)
     blocks = lines_to_blocks(ordered, headings=use_font_headings)
@@ -146,6 +153,46 @@ def _blocks(
     if needs_ocr:
         blocks.extend(_recognize(document.path, needs_ocr, password, options, recognizer))
     blocks.sort(key=lambda block: (block.page, -block.y, 0 if block.kind == "heading" else 1))
+    return blocks
+
+
+def _plates_are_illustrations(document: PdfDocument) -> bool:
+    illustrated = [
+        page for page in document.pages if page.full_page_image and page.page_class != "spread"
+    ]
+    if not illustrated:
+        return False
+    return len(illustrated) < len(document.pages) * 0.4
+
+
+def _plate_images(document: PdfDocument, password: str | None) -> list[Block]:
+    work = _decrypted_copy(document.path, password) if password else document.path
+    pdf = pdfium.PdfDocument(str(work))
+    blocks: list[Block] = []
+    try:
+        for page in document.pages:
+            if not page.full_page_image or page.page_class == "spread":
+                continue
+            rendered = pdf[page.number].render(scale=2).to_pil()
+            if rendered.mode not in ("RGB", "RGBA"):
+                rendered = rendered.convert("RGB")
+            buffer = BytesIO()
+            rendered.save(buffer, format="PNG")
+            blocks.append(
+                Block(
+                    "figure",
+                    page=page.number,
+                    source="plate",
+                    image=buffer.getvalue(),
+                    image_ext="png",
+                    alt="Illustration",
+                    y=page.height,
+                )
+            )
+    finally:
+        pdf.close()
+        if work != document.path:
+            work.unlink(missing_ok=True)
     return blocks
 
 

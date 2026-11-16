@@ -82,6 +82,24 @@ def test_encrypted_pdf_needs_the_password_from_the_batch(tmp_path: Path):
     assert opened.status == "ok", opened.error
 
 
+def test_full_page_drawings_in_a_text_book_are_pictures(tmp_path: Path):
+    source = tmp_path / "illustrated.pdf"
+    _write_illustrated(source)
+    result = convert_file(
+        source,
+        ConvertOptions(output_dir=tmp_path / "out", recognizer="none"),
+    )
+    assert result.status == "ok", result.error
+    import zipfile
+
+    with zipfile.ZipFile(tmp_path / "out" / "illustrated.epub") as archive:
+        html = archive.read("OEBPS/chapter-01.xhtml").decode("utf-8")
+        images = [name for name in archive.namelist() if name.startswith("OEBPS/images/")]
+    assert "Hello from the body of the book." in html
+    assert "<img " in html
+    assert images
+
+
 def test_scan_page_uses_the_recognizer(tmp_path: Path):
     source = tmp_path / "scan.pdf"
     _write_scan(source)
@@ -113,6 +131,29 @@ def _write_story(path: Path) -> None:
         pdf.set_font("Helvetica", size=12)
         pdf.text(20, 40, f"Body paragraph on page {index + 2}.")
         pdf.text(100, 280, str(index + 2))
+    pdf.output(path)
+
+
+def _write_illustrated(path: Path) -> None:
+    from io import BytesIO
+
+    from PIL import Image
+
+    image = Image.new("RGB", (800, 1100), "black")
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    png = tmp_image(path.parent / "plate.png", buffer.getvalue())
+    pdf = FPDF()
+    pdf.set_auto_page_break(False)
+    pdf.add_page()
+    pdf.set_font("Helvetica", size=12)
+    pdf.text(20, 40, "Hello from the body of the book.")
+    for index in range(3):
+        pdf.add_page()
+        pdf.set_font("Helvetica", size=12)
+        pdf.text(20, 40, f"Body paragraph on page {index + 2}.")
+    pdf.add_page()
+    pdf.image(str(png), x=0, y=0, w=210, h=297)
     pdf.output(path)
 
 
